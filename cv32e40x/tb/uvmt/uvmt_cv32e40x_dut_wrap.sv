@@ -197,6 +197,13 @@ module uvmt_cv32e40x_dut_wrap
          .xif_mem_result_if      ( xif.cpu_mem_result             ),
          .xif_result_if          ( xif.cpu_result                 ),
 
+         .xif_coproc_compressed_if      ( xif.coproc_compressed             ),
+         .xif_coproc_issue_if           ( xif.coproc_issue                  ),
+         .xif_coproc_commit_if          ( xif.coproc_commit                 ),
+         .xif_coproc_mem_if             ( xif.coproc_mem                    ),
+         .xif_coproc_mem_result_if      ( xif.coproc_mem_result             ),
+         .xif_coproc_result_if          ( xif.coproc_result                 ),
+
          .irq_i                  ( interrupt_if.irq               ),
 
          .fencei_flush_req_o     ( fencei_if_i.flush_req          ),
