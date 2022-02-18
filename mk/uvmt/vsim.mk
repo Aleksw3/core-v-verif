@@ -38,7 +38,7 @@ DPI_INCLUDE            ?= $(abspath $(shell which $(VLIB))/../../include)
 USES_DPI = 1
 
 # Default flags
-VSIM_USER_FLAGS         ?=
+VSIM_USER_FLAGS         ?= -64
 VOPT_COV  				?= +cover=setf+$(RTLSRC_VLOG_TB_TOP).
 VSIM_COV 				?= -coverage
 VOPT_WAVES_ADV_DEBUG    ?= -designfile design.bin
@@ -131,6 +131,7 @@ VOPT_FLAGS    ?= \
 				 -fsmdebug \
 				 -suppress 7034 \
 				 +acc \
+				 -64 \
 				 $(QUIET)
 
 ###############################################################################
