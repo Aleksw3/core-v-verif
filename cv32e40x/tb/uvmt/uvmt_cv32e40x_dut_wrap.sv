@@ -164,7 +164,7 @@ module uvmt_cv32e40x_dut_wrap
          .mtvec_addr_i           ( core_cntrl_if.mtvec_addr       ),
          .dm_halt_addr_i         ( core_cntrl_if.dm_halt_addr     ),
          .nmi_addr_i             ( core_cntrl_if.nmi_addr         ),
-         .hart_id_i              ( core_cntrl_if.hart_id          ),
+         .mhartid_i              ( core_cntrl_if.hart_id          ),
          .dm_exception_addr_i    ( core_cntrl_if.dm_exception_addr),
 
          .instr_req_o            ( obi_instr_if_i.req             ),
@@ -197,12 +197,19 @@ module uvmt_cv32e40x_dut_wrap
          .xif_mem_result_if      ( xif.cpu_mem_result             ),
          .xif_result_if          ( xif.cpu_result                 ),
 
-         .xif_coproc_compressed_if      ( xif.coproc_compressed             ),
-         .xif_coproc_issue_if           ( xif.coproc_issue                  ),
-         .xif_coproc_commit_if          ( xif.coproc_commit                 ),
-         .xif_coproc_mem_if             ( xif.coproc_mem                    ),
-         .xif_coproc_mem_result_if      ( xif.coproc_mem_result             ),
-         .xif_coproc_result_if          ( xif.coproc_result                 ),
+         .xif_coproc_compressed_if      ( xif.coproc_compressed   ),
+         .xif_coproc_issue_if           ( xif.coproc_issue        ),
+         .xif_coproc_commit_if          ( xif.coproc_commit       ),
+         .xif_coproc_mem_if             ( xif.coproc_mem          ),
+         .xif_coproc_mem_result_if      ( xif.coproc_mem_result   ),
+         .xif_coproc_result_if          ( xif.coproc_result       ),
+
+         .xif_monitor_compressed         ( xif.monitor_compressed   ),
+         .xif_monitor_issue_if           ( xif.monitor_issue        ),
+         .xif_monitor_commit_if          ( xif.monitor_commit       ),
+         .xif_monitor_mem_if             ( xif.monitor_mem          ),
+         .xif_monitor_mem_result_if      ( xif.monitor_mem_result   ),
+         .xif_monitor_result_if          ( xif.monitor_result       ),
 
          .irq_i                  ( interrupt_if.irq               ),
 
