@@ -15,7 +15,11 @@ export SHELL = /bin/bash
 
 CV_CORE_REPO   ?= https://github.com/Aleksw3/cv32e40x.git
 CV_CORE_BRANCH ?= master
+<<<<<<< HEAD
 CV_CORE_HASH   ?= head
+=======
+CV_CORE_HASH   ?= 1d56e0e1eae6925c62fbbf2fea8a3fe155ac802a
+>>>>>>> upstream/cv32e40x/dev
 CV_CORE_TAG    ?= none
 
 # TODO: silabs-hfegran, remove this temporary fix when riscv-dv changes get upstreamed
