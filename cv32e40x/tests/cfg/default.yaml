@@ -11,7 +11,9 @@ plusargs: >
     +enable_zbb_extension=1
     +enable_zbc_extension=1
     +enable_zbs_extension=1
-cv_sw_march: rv32imc_zba1p00_zbb1p00_zbc1p00_zbs1p00
+    +enable_zkne_extension=1
+    +enable_zknd_extension=1
+cv_sw_march: rv32imc_zba1p00_zbb1p00_zbc1p00_zbs1p00_zkne1p00_zknd1p00
 # Note: the following are depreciated
 #riscv_march: rv32imc_zba1p00_zbb1p00_zbc1p00_zbs1p00
 #gnu_march:   rv32imc_zba1p00_zbb1p00_zbc1p00_zbs1p00
