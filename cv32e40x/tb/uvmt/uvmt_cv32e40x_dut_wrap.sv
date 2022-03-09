@@ -209,13 +209,6 @@ module uvmt_cv32e40x_dut_wrap
          .xif_coproc_mem_result_if      ( xif.coproc_mem_result   ),
          .xif_coproc_result_if          ( xif.coproc_result       ),
 
-         .xif_monitor_compressed         ( xif.monitor_compressed   ),
-         .xif_monitor_issue_if           ( xif.monitor_issue        ),
-         .xif_monitor_commit_if          ( xif.monitor_commit       ),
-         .xif_monitor_mem_if             ( xif.monitor_mem          ),
-         .xif_monitor_mem_result_if      ( xif.monitor_mem_result   ),
-         .xif_monitor_result_if          ( xif.monitor_result       ),
-
          .irq_i                  ( interrupt_if.irq               ),
 
          .clic_irq_i             ( '0   /*todo: connect */        ),
