@@ -81,20 +81,22 @@ uint32_t* key_scheduler(const uint32_t* key, const uint16_t key_length)
         {
             round_keys[i] = 0;
             volatile uint32_t tmp_key_i = ROTATE_32_RIGHT(round_keys[i - 1]);
-            __asm__ volatile("aes32esi %0, %1, %2, 0":"=r"(round_keys[i]): "0"(round_keys[i]), "r"(tmp_key_i));
-            __asm__ volatile("aes32esi %0, %1, %2, 1":"=r"(round_keys[i]): "0"(round_keys[i]), "r"(tmp_key_i));
-            __asm__ volatile("aes32esi %0, %1, %2, 2":"=r"(round_keys[i]): "0"(round_keys[i]), "r"(tmp_key_i));
-            __asm__ volatile("aes32esi %0, %1, %2, 3":"=r"(round_keys[i]): "0"(round_keys[i]), "r"(tmp_key_i));
-            round_keys[i] = round_keys[i] ^ (rcon[i/N - 1] << 24); //RCON[0] ??
+            volatile uint32_t tmp_key[2] = {(tmp_key_i & 0x0000FFFF), (tmp_key_i & 0xFFFF0000) >> 16};
+            __asm__ volatile("aes32esi %0, %1, %2, 0":"=r"(round_keys[i]): "0"(round_keys[i]), "r"(tmp_key[0]));
+            __asm__ volatile("aes32esi %0, %1, %2, 1":"=r"(round_keys[i]): "0"(round_keys[i]), "r"(tmp_key[0]));
+            __asm__ volatile("aes32esi %0, %1, %2, 2":"=r"(round_keys[i]): "0"(round_keys[i]), "r"(tmp_key[1]));
+            __asm__ volatile("aes32esi %0, %1, %2, 3":"=r"(round_keys[i]): "0"(round_keys[i]), "r"(tmp_key[1]));
+            round_keys[i] = round_keys[i] ^ (rcon[i/N - 1] << 24);
             round_keys[i] = round_keys[i] ^ round_keys[i - N];
         }
         else if(i >= N && N > 6 && i % N == 4)
         {
             round_keys[i] = 0;
-            __asm__ volatile("aes32esi %0, %1, %2, 0":"=r"(round_keys[i]): "0"(round_keys[i]),"r"(round_keys[i - 1]));
-            __asm__ volatile("aes32esi %0, %1, %2, 1":"=r"(round_keys[i]): "0"(round_keys[i]),"r"(round_keys[i - 1]));
-            __asm__ volatile("aes32esi %0, %1, %2, 2":"=r"(round_keys[i]): "0"(round_keys[i]),"r"(round_keys[i - 1]));
-            __asm__ volatile("aes32esi %0, %1, %2, 3":"=r"(round_keys[i]): "0"(round_keys[i]),"r"(round_keys[i - 1]));
+            volatile uint32_t tmp_key[2] = {(round_keys[i - 1] & 0x0000FFFF), (round_keys[i - 1] & 0xFFFF0000) >> 16};
+            __asm__ volatile("aes32esi %0, %1, %2, 0":"=r"(round_keys[i]): "0"(round_keys[i]),"r"(tmp_key[0]));
+            __asm__ volatile("aes32esi %0, %1, %2, 1":"=r"(round_keys[i]): "0"(round_keys[i]),"r"(tmp_key[0]));
+            __asm__ volatile("aes32esi %0, %1, %2, 2":"=r"(round_keys[i]): "0"(round_keys[i]),"r"(tmp_key[1]));
+            __asm__ volatile("aes32esi %0, %1, %2, 3":"=r"(round_keys[i]): "0"(round_keys[i]),"r"(tmp_key[1]));
             round_keys[i] = round_keys[i] ^ round_keys[i - N];
         }
         else {
@@ -107,105 +109,154 @@ uint32_t* key_scheduler(const uint32_t* key, const uint16_t key_length)
     return round_keys;
 }
 
-uint32_t* encrypt(char* msg, uint16_t msg_length, uint32_t* round_keys, uint16_t key_length)
+void create_shares(uint32_t* msg, uint16_t msg_length, uint32_t* share_a, uint32_t* share_b)
+{
+    memcpy(share_a, msg, msg_length);
+
+    memset(share_b, 2, msg_length); //TODO find a good way of creating random share values
+
+    for(uint16_t i = 0; i < msg_length / 32; i++)
+        share_a[i] ^= share_b[i];
+}
+
+uint32_t* encrypt(uint32_t* msg, uint16_t msg_length, uint32_t* round_keys, uint16_t key_length)
 {
     const uint16_t padded_length = msg_length/128 * 128 + 128;
     uint32_t* padded_msg = malloc(padded_length);
+
+    memset(padded_msg, 0, padded_length); 
+    memcpy(padded_msg, msg, msg_length);
     
     //uint8_t[] -> uint32_t[] creates problems with endianess.. 
     //This is not an efficient procedure, but it works.. 
     //An idea could be to fix the round keys to match
     //the endianess of the input text
-    memset(padded_msg, 0, padded_length); 
-    memcpy(padded_msg, msg, msg_length);
+    
     // for(uint32_t i = 0; i < msg_length; i++)
-    //     (padded_msg)[i/4] |= ((uint32_t)msg[i]) << (3-i%4)*8; 
+    //     (share_a)[i/4] |= ((uint32_t)msg[i]) << (3-i%4)*8; 
 
+    
 
     const uint8_t rounds = (key_length == 128) ? 10 : (key_length == 192) ? 12 : 14;
 
 
     uint32_t* cipher = malloc(padded_length);
+    uint32_t* share_a, *share_b;
+    share_a = malloc(128);
+    share_b = malloc(128);        
+
+
     for(uint8_t msg_block = 0; msg_block < padded_length/128; msg_block++){
         //AddRoundKey
-        cipher[msg_block*4 + 0] = padded_msg[msg_block*4 + 0] ^ round_keys[0]; 
-        cipher[msg_block*4 + 1] = padded_msg[msg_block*4 + 1] ^ round_keys[1];
-        cipher[msg_block*4 + 2] = padded_msg[msg_block*4 + 2] ^ round_keys[2];
-        cipher[msg_block*4 + 3] = padded_msg[msg_block*4 + 3] ^ round_keys[3];
+        create_shares(&cipher[msg_block*4], 128, share_a, share_b);
+        share_a[0] ^= round_keys[0]; 
+        share_a[1] ^= round_keys[1];
+        share_a[2] ^= round_keys[2];
+        share_a[3] ^= round_keys[3];
 
-        printf("roundkeys = %08lx %08lx %08lx %08lx\n", round_keys[0],round_keys[1],round_keys[2],round_keys[3]);
-        printf("msg = %08lx %08lx %08lx %08lx\n", padded_msg[0],padded_msg[1],padded_msg[2],padded_msg[3]);
-        printf("cipher (xor) = %08lx %08lx %08lx %08lx\n", cipher[0],cipher[1],cipher[2],cipher[3]);
+        printf("roundkeys    = %08lx %08lx %08lx %08lx\n", round_keys[0],round_keys[1],round_keys[2],round_keys[3]);
+        printf("msg          = %08lx %08lx %08lx %08lx\n", padded_msg[0],padded_msg[1],padded_msg[2],padded_msg[3]);
+        printf("cipher (xor) = %08lx %08lx %08lx %08lx\n\n", share_a[0],share_a[1],share_a[2],share_a[3]);
 
         // 10/12/14 rounds with MixColumn
         for(uint8_t i = 1; i < rounds; i++){
-            volatile uint32_t key_tmp[4]    = {round_keys[i*4], round_keys[i*4+1], round_keys[i*4+2], round_keys[i*4+3]};
-            volatile uint32_t cipher_tmp[4] = {cipher[msg_block*4 + 0], cipher[msg_block*4 + 1], cipher[msg_block*4 + 2], cipher[msg_block*4 + 3]};
+            if( i!= 1 ) create_shares(&cipher[msg_block*4], 128, share_a, share_b);
+            
+            volatile uint32_t key_tmp[4]     = {round_keys[i*4], round_keys[i*4+1], round_keys[i*4+2], round_keys[i*4+3]};
+            volatile uint32_t share_a_tmp[4] = {share_a[0], share_a[1], share_a[2], share_a[3]};
+            volatile uint32_t share_b_tmp[4] = {share_b[0], share_b[1], share_b[2], share_b[3]};
+            volatile uint32_t cipher_tmp[8]  = {(share_b_tmp[0] & 0x0000FFFF) << 16 | (share_a_tmp[0] & 0x0000FFFF)       ,
+                                               (share_b_tmp[0] & 0xFFFF0000)       | (share_a_tmp[0] & 0xFFFF0000)  >> 16 ,
+                                               (share_b_tmp[1] & 0x0000FFFF) << 16 | (share_a_tmp[1] & 0x0000FFFF)        ,
+                                               (share_b_tmp[1] & 0xFFFF0000)       | (share_a_tmp[1] & 0xFFFF0000)  >> 16 ,
+                                               (share_b_tmp[2] & 0x0000FFFF) << 16 | (share_a_tmp[2] & 0x0000FFFF)        ,
+                                               (share_b_tmp[2] & 0xFFFF0000)       | (share_a_tmp[2] & 0xFFFF0000)  >> 16 ,
+                                               (share_b_tmp[3] & 0x0000FFFF) << 16 | (share_a_tmp[3] & 0x0000FFFF)        ,
+                                               (share_b_tmp[3] & 0xFFFF0000)       | (share_a_tmp[3] & 0xFFFF0000)  >> 16 ,
+                                                };
+            
+
             printf("key_bytes = %08lx %08lx %08lx %08lx\n", key_tmp[0],key_tmp[1],key_tmp[2],key_tmp[3]);
-            printf("cipher_bytes = %08lx %08lx %08lx %08lx\n", cipher_tmp[0],cipher_tmp[1],cipher_tmp[2],cipher_tmp[3]); 
+            printf("share_a   = %08lx %08lx %08lx %08lx\n", share_a_tmp[0],share_a_tmp[1],share_a_tmp[2],share_a_tmp[3]); 
+            printf("share_b   = %08lx %08lx %08lx %08lx\n\n", share_b_tmp[0],share_b_tmp[1],share_b_tmp[2],share_b_tmp[3]); 
 
-            __asm__ volatile("aes32esmi %0, %1, %2, 3": "=r"(key_tmp[0])             : "0"(key_tmp[0]), "r"(cipher_tmp[0]));
-            __asm__ volatile("aes32esmi %0, %1, %2, 2": "=r"(key_tmp[0])             : "0"(key_tmp[0]), "r"(cipher_tmp[1]));
-            __asm__ volatile("aes32esmi %0, %1, %2, 1": "=r"(key_tmp[0])             : "0"(key_tmp[0]), "r"(cipher_tmp[2]));
-            __asm__ volatile("aes32esmi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 0]): "0"(key_tmp[0]), "r"(cipher_tmp[3]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 3": "=r"(key_tmp[0])             : "0"(key_tmp[0]), "r"(cipher_tmp[1]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 2": "=r"(key_tmp[0])             : "0"(key_tmp[0]), "r"(cipher_tmp[3]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 1": "=r"(key_tmp[0])             : "0"(key_tmp[0]), "r"(cipher_tmp[4]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 0]): "0"(key_tmp[0]), "r"(cipher_tmp[6]));
 
-            __asm__ volatile("aes32esmi %0, %1, %2, 3": "=r"(key_tmp[1])             : "0"(key_tmp[1]), "r"(cipher_tmp[1]));
-            __asm__ volatile("aes32esmi %0, %1, %2, 2": "=r"(key_tmp[1])             : "0"(key_tmp[1]), "r"(cipher_tmp[2]));
-            __asm__ volatile("aes32esmi %0, %1, %2, 1": "=r"(key_tmp[1])             : "0"(key_tmp[1]), "r"(cipher_tmp[3]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 3": "=r"(key_tmp[1])             : "0"(key_tmp[1]), "r"(cipher_tmp[3]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 2": "=r"(key_tmp[1])             : "0"(key_tmp[1]), "r"(cipher_tmp[5]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 1": "=r"(key_tmp[1])             : "0"(key_tmp[1]), "r"(cipher_tmp[6]));
             __asm__ volatile("aes32esmi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 1]): "0"(key_tmp[1]), "r"(cipher_tmp[0]));
 
-            __asm__ volatile("aes32esmi %0, %1, %2, 3": "=r"(key_tmp[2])             : "0"(key_tmp[2]), "r"(cipher_tmp[2]));
-            __asm__ volatile("aes32esmi %0, %1, %2, 2": "=r"(key_tmp[2])             : "0"(key_tmp[2]), "r"(cipher_tmp[3]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 3": "=r"(key_tmp[2])             : "0"(key_tmp[2]), "r"(cipher_tmp[5]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 2": "=r"(key_tmp[2])             : "0"(key_tmp[2]), "r"(cipher_tmp[7]));
             __asm__ volatile("aes32esmi %0, %1, %2, 1": "=r"(key_tmp[2])             : "0"(key_tmp[2]), "r"(cipher_tmp[0]));
-            __asm__ volatile("aes32esmi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 2]): "0"(key_tmp[2]), "r"(cipher_tmp[1]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 2]): "0"(key_tmp[2]), "r"(cipher_tmp[2]));
 
-            __asm__ volatile("aes32esmi %0, %1, %2, 3": "=r"(key_tmp[3])             : "0"(key_tmp[3]), "r"(cipher_tmp[3]));
-            __asm__ volatile("aes32esmi %0, %1, %2, 2": "=r"(key_tmp[3])             : "0"(key_tmp[3]), "r"(cipher_tmp[0]));
-            __asm__ volatile("aes32esmi %0, %1, %2, 1": "=r"(key_tmp[3])             : "0"(key_tmp[3]), "r"(cipher_tmp[1]));
-            __asm__ volatile("aes32esmi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 3]): "0"(key_tmp[3]), "r"(cipher_tmp[2]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 3": "=r"(key_tmp[3])             : "0"(key_tmp[3]), "r"(cipher_tmp[7]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 2": "=r"(key_tmp[3])             : "0"(key_tmp[3]), "r"(cipher_tmp[1]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 1": "=r"(key_tmp[3])             : "0"(key_tmp[3]), "r"(cipher_tmp[2]));
+            __asm__ volatile("aes32esmi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 3]): "0"(key_tmp[3]), "r"(cipher_tmp[4]));
             print_cipher(cipher, 128);
         }
         // Last round does not require MixColumn
 
         volatile uint32_t key_tmp[4]    = {round_keys[rounds*4 + 0], round_keys[rounds*4 + 1], round_keys[rounds*4 + 2], round_keys[rounds*4 + 3]};
-        volatile uint32_t cipher_tmp[4] = {cipher[msg_block*4 + 0], cipher[msg_block*4 + 1], cipher[msg_block*4 + 2], cipher[msg_block*4 + 3]};
-        __asm__ volatile("aes32esi %0, %1, %2, 3": "=r"(key_tmp[0]             ): "0"(key_tmp[0]), "r"(cipher_tmp[0]));
-        __asm__ volatile("aes32esi %0, %1, %2, 2": "=r"(key_tmp[0]             ): "0"(key_tmp[0]), "r"(cipher_tmp[1]));
-        __asm__ volatile("aes32esi %0, %1, %2, 1": "=r"(key_tmp[0]             ): "0"(key_tmp[0]), "r"(cipher_tmp[2]));
-        __asm__ volatile("aes32esi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 0]): "0"(key_tmp[0]), "r"(cipher_tmp[3]));
 
-        __asm__ volatile("aes32esi %0, %1, %2, 3": "=r"(key_tmp[1]             ): "0"(key_tmp[1]), "r"(cipher_tmp[1]));
-        __asm__ volatile("aes32esi %0, %1, %2, 2": "=r"(key_tmp[1]             ): "0"(key_tmp[1]), "r"(cipher_tmp[2]));
-        __asm__ volatile("aes32esi %0, %1, %2, 1": "=r"(key_tmp[1]             ): "0"(key_tmp[1]), "r"(cipher_tmp[3]));
+        volatile uint32_t share_a_tmp[4] = {share_a[0], share_a[1], share_a[2], share_a[3]};
+        volatile uint32_t share_b_tmp[4] = {share_b[0], share_b[1], share_b[2], share_b[3]};
+        volatile uint32_t cipher_tmp[8] = { (share_b_tmp[0] & 0x0000FFFF) << 16 | (share_a_tmp[0] & 0x0000FFFF),
+                                            (share_b_tmp[0] & 0xFFFF0000)       | (share_a_tmp[0] & 0xFFFF0000) >> 16,
+                                            (share_b_tmp[1] & 0x0000FFFF) << 16 | (share_a_tmp[1] & 0x0000FFFF),
+                                            (share_b_tmp[1] & 0xFFFF0000)       | (share_a_tmp[1] & 0xFFFF0000) >> 16,
+                                            (share_b_tmp[2] & 0x0000FFFF) << 16 | (share_a_tmp[2] & 0x0000FFFF),
+                                            (share_b_tmp[2] & 0xFFFF0000)       | (share_a_tmp[2] & 0xFFFF0000) >> 16,
+                                            (share_b_tmp[3] & 0x0000FFFF) << 16 | (share_a_tmp[3] & 0x0000FFFF),
+                                            (share_b_tmp[3] & 0xFFFF0000)       | (share_a_tmp[3] & 0xFFFF0000) >> 16,
+                                            };
+
+        __asm__ volatile("aes32esi %0, %1, %2, 3": "=r"(key_tmp[0]             ): "0"(key_tmp[0]), "r"(cipher_tmp[1]));
+        __asm__ volatile("aes32esi %0, %1, %2, 2": "=r"(key_tmp[0]             ): "0"(key_tmp[0]), "r"(cipher_tmp[3]));
+        __asm__ volatile("aes32esi %0, %1, %2, 1": "=r"(key_tmp[0]             ): "0"(key_tmp[0]), "r"(cipher_tmp[4]));
+        __asm__ volatile("aes32esi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 0]): "0"(key_tmp[0]), "r"(cipher_tmp[6]));
+
+        __asm__ volatile("aes32esi %0, %1, %2, 3": "=r"(key_tmp[1]             ): "0"(key_tmp[1]), "r"(cipher_tmp[3]));
+        __asm__ volatile("aes32esi %0, %1, %2, 2": "=r"(key_tmp[1]             ): "0"(key_tmp[1]), "r"(cipher_tmp[5]));
+        __asm__ volatile("aes32esi %0, %1, %2, 1": "=r"(key_tmp[1]             ): "0"(key_tmp[1]), "r"(cipher_tmp[6]));
         __asm__ volatile("aes32esi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 1]): "0"(key_tmp[1]), "r"(cipher_tmp[0]));
 
-        __asm__ volatile("aes32esi %0, %1, %2, 3": "=r"(key_tmp[2]             ): "0"(key_tmp[2]), "r"(cipher_tmp[2]));
-        __asm__ volatile("aes32esi %0, %1, %2, 2": "=r"(key_tmp[2]             ): "0"(key_tmp[2]), "r"(cipher_tmp[3]));
+        __asm__ volatile("aes32esi %0, %1, %2, 3": "=r"(key_tmp[2]             ): "0"(key_tmp[2]), "r"(cipher_tmp[5]));
+        __asm__ volatile("aes32esi %0, %1, %2, 2": "=r"(key_tmp[2]             ): "0"(key_tmp[2]), "r"(cipher_tmp[7]));
         __asm__ volatile("aes32esi %0, %1, %2, 1": "=r"(key_tmp[2]             ): "0"(key_tmp[2]), "r"(cipher_tmp[0]));
-        __asm__ volatile("aes32esi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 2]): "0"(key_tmp[2]), "r"(cipher_tmp[1]));
+        __asm__ volatile("aes32esi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 2]): "0"(key_tmp[2]), "r"(cipher_tmp[2]));
 
-        __asm__ volatile("aes32esi %0, %1, %2, 3": "=r"(key_tmp[3]             ): "0"(key_tmp[3]), "r"(cipher_tmp[3]));
-        __asm__ volatile("aes32esi %0, %1, %2, 2": "=r"(key_tmp[3]             ): "0"(key_tmp[3]), "r"(cipher_tmp[0]));
-        __asm__ volatile("aes32esi %0, %1, %2, 1": "=r"(key_tmp[3]             ): "0"(key_tmp[3]), "r"(cipher_tmp[1]));
-        __asm__ volatile("aes32esi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 3]): "0"(key_tmp[3]), "r"(cipher_tmp[2]));
+        __asm__ volatile("aes32esi %0, %1, %2, 3": "=r"(key_tmp[3]             ): "0"(key_tmp[3]), "r"(cipher_tmp[7]));
+        __asm__ volatile("aes32esi %0, %1, %2, 2": "=r"(key_tmp[3]             ): "0"(key_tmp[3]), "r"(cipher_tmp[1]));
+        __asm__ volatile("aes32esi %0, %1, %2, 1": "=r"(key_tmp[3]             ): "0"(key_tmp[3]), "r"(cipher_tmp[2]));
+        __asm__ volatile("aes32esi %0, %1, %2, 0": "=r"(cipher[msg_block*4 + 3]): "0"(key_tmp[3]), "r"(cipher_tmp[4]));
         print_cipher(cipher, 128);
     }
+    free(share_a);
+    free(share_b);
+    free(padded_msg);
     return cipher;
 }
 
 char* decrypt(uint32_t* cipher, uint16_t cipher_length, uint32_t* round_keys, uint16_t key_length)
 {
     // const uint16_t padded_length = msg_length/128 * 128 + 128;
-    // uint32_t* padded_msg = malloc(padded_length);
+    // uint32_t* share_a = malloc(padded_length);
     
     //uint8_t[] -> uint32_t[] creates problems with endianess.. 
     //This is not an efficient procedure, but it works.. 
     //An idea could be to fix the round keys to match
     //the endianess of the input text
-    // memset(padded_msg, 0, padded_length); 
-    // // memcpy(padded_msg, msg, msg_length);
+    // memset(share_a, 0, padded_length); 
+    // // memcpy(share_a, msg, msg_length);
     // for(uint32_t i = 0; i < msg_length; i++)
-    //     (padded_msg)[i/4] |= ((uint32_t)msg[i]) << (3-i%4)*8; 
+    //     (share_a)[i/4] |= ((uint32_t)msg[i]) << (3-i%4)*8; 
 
 
     const uint8_t rounds = (key_length == 128) ? 10 : (key_length == 192) ? 12 : 14;
@@ -296,11 +347,14 @@ int main(int argc, char *argv[])
     print_roundkeys(round_keys, key_length);
     
     
-    char msg[] = {'T','w','o',' ','O', 'n', 'e', ' ', 'N', 'i', 'n','e',' ','T','w','o'};
+    // char msg[] = {0x20, 0x6f, 0x77, 0x54, 0x20, 0x65, 0x6e, 0x4f, 0x65, 0x6e, 0x69, 0x4e, 0x6f, 0x77, 0x54, 0x20};//{'T','w','o',' ','O', 'n', 'e', ' ', 'N', 'i', 'n','e',' ','T','w','o'};
+    uint32_t msg[4] = {0x54776f20, 0x4f6e6520, 0x4e696e65, 0x2054776f};
     uint16_t msg_length = sizeof(msg)/sizeof(char);
     uint32_t* cipher = encrypt(msg, msg_length, round_keys, key_length);
     print_cipher(cipher, msg_length);
     print_msg_hex(msg, msg_length);
+
+    
     // uint8_t cipher_length = msg_length/128 * 128 + 128;
     // char* decipher   = decrypt(cipher, cipher_length, round_keys, key_length); 
     // print_msg_hex(decipher, msg_length);
